@@ -1,0 +1,284 @@
+# Admin Tools for Gmail Pool Management
+
+This directory contains tools for managing Gmail accounts in your warm-up pool.
+
+## Prerequisites
+
+Before using these tools, make sure you have:
+
+1. ✅ Completed Google Cloud Console setup (see `../GMAIL_SETUP.md`)
+2. ✅ Set Cloudflare secrets:
+   - `GOOGLE_CLIENT_ID`
+   - `GOOGLE_CLIENT_SECRET`
+   - `ENCRYPTION_KEY`
+3. ✅ Initialized the database schema
+4. ✅ Installed dependencies: `npm install`
+
+## Tools
+
+### 1. Add Single Account
+
+Add one Gmail account to the pool with OAuth authentication.
+
+```bash
+node admin/add-account.js
+```
+
+**What it does:**
+- Starts a local OAuth server
+- Opens your browser for Gmail authentication
+- Obtains and encrypts OAuth tokens
+- Adds the account to the database
+
+**You'll need:**
+- Google Client ID
+- Google Client Secret
+- Encryption Key (32-byte hex)
+
+**Example:**
+```bash
+$ node admin/add-account.js
+
+Enter your Google Client ID: 123456789-abc.apps.googleusercontent.com
+Enter your Google Client Secret: GOCSPX-abc123def456
+Enter your Encryption Key: a1b2c3d4e5f6...
+
+✅ OAuth server started on http://localhost:3000
+📱 Opening browser for Gmail authentication...
+⏳ Waiting for authentication...
+
+✅ OAuth tokens received
+✅ Email: pool1@gmail.com
+✅ Credentials encrypted
+✅ Account added to database
+```
+
+### 2. Bulk Import Accounts
+
+Add multiple Gmail accounts sequentially.
+
+```bash
+node admin/bulk-import.js <number_of_accounts>
+```
+
+**Example:**
+```bash
+# Add 10 accounts
+node admin/bulk-import.js 10
+```
+
+This will run the OAuth flow 10 times, once for each account.
+
+### 3. List All Accounts
+
+View all Gmail accounts in the pool.
+
+```bash
+./admin/list-accounts.sh
+```
+
+**Output:**
+```
+===================================
+Gmail Pool Accounts
+===================================
+
+id  email_address        status   created_at           last_used_at
+1   pool1@gmail.com      active   2026-01-15 20:00:00  2026-01-15 21:30:00
+2   pool2@gmail.com      active   2026-01-15 20:05:00  NULL
+3   pool3@gmail.com      inactive 2026-01-15 20:10:00  2026-01-15 20:45:00
+
+===================================
+Summary
+===================================
+
+status    count
+active    2
+inactive  1
+```
+
+### 4. Update Account Status
+
+Change an account's status (active/inactive/suspended).
+
+```bash
+./admin/update-status.sh <email> <status>
+```
+
+**Status options:**
+- `active` - Account will be used in campaigns
+- `inactive` - Account will not be used
+- `suspended` - Account has been suspended by Gmail
+
+**Example:**
+```bash
+# Deactivate an account
+./admin/update-status.sh pool1@gmail.com inactive
+
+# Reactivate an account
+./admin/update-status.sh pool1@gmail.com active
+```
+
+### 5. Remove Account
+
+Delete an account from the pool.
+
+```bash
+./admin/remove-account.sh <email>
+```
+
+**Example:**
+```bash
+./admin/remove-account.sh pool1@gmail.com
+```
+
+**Warning:** This permanently deletes the account and its credentials from the database.
+
+## Workflow
+
+### Adding Your First Account
+
+1. Complete Google Cloud Console setup
+2. Run the add account tool:
+   ```bash
+   node admin/add-account.js
+   ```
+3. Follow the prompts
+4. Verify it was added:
+   ```bash
+   ./admin/list-accounts.sh
+   ```
+
+### Adding Multiple Accounts
+
+**Option A: One at a time**
+```bash
+# Run this command for each account
+node admin/add-account.js
+```
+
+**Option B: Bulk import**
+```bash
+# Add 50 accounts
+node admin/bulk-import.js 50
+```
+
+### Managing Accounts
+
+```bash
+# View all accounts
+./admin/list-accounts.sh
+
+# Deactivate an account temporarily
+./admin/update-status.sh pool5@gmail.com inactive
+
+# Reactivate it later
+./admin/update-status.sh pool5@gmail.com active
+
+# Remove an account permanently
+./admin/remove-account.sh pool5@gmail.com
+```
+
+## Tips
+
+### Organizing Gmail Accounts
+
+**Create dedicated accounts:**
+```
+warmup-pool-001@gmail.com
+warmup-pool-002@gmail.com
+warmup-pool-003@gmail.com
+...
+```
+
+**Use a naming convention:**
+- Makes tracking easier
+- Simplifies management
+- Helps identify issues
+
+### Batch Creation
+
+1. Create Gmail accounts in batches (10-20 at a time)
+2. Wait 24 hours between batches
+3. Use the bulk import tool to add them
+4. Test with a small campaign first
+
+### Security
+
+- **Never share your encryption key** - Store it securely
+- **Use environment variables** - Don't hardcode credentials
+- **Rotate keys periodically** - Update encryption key every 90 days
+- **Monitor for suspicious activity** - Check Google Cloud Console logs
+
+### Troubleshooting
+
+**Error: "Access blocked: This app's request is invalid"**
+- Make sure the Gmail address is added as a test user in Google Cloud Console
+
+**Error: "invalid_grant"**
+- The refresh token has expired
+- Re-run the OAuth flow for that account
+
+**Error: "insufficient_permissions"**
+- Check that all required scopes are enabled in Google Cloud Console
+
+**OAuth server won't start**
+- Make sure port 3000 is not in use
+- Try a different port by editing `add-account.js`
+
+## Advanced Usage
+
+### Custom OAuth Redirect URI
+
+If you need to use a different port or host, edit `add-account.js`:
+
+```javascript
+const PORT = 3000; // Change this
+const REDIRECT_URI = `http://localhost:${PORT}/oauth/callback`;
+```
+
+Then update the redirect URI in Google Cloud Console to match.
+
+### Programmatic Account Addition
+
+If you have OAuth tokens from another source, you can add them directly:
+
+```bash
+wrangler d1 execute email-warmup-db --command "
+INSERT INTO gmail_accounts (email_address, oauth_credentials, status) 
+VALUES ('email@gmail.com', 'ENCRYPTED_CREDENTIALS_HERE', 'active')
+"
+```
+
+Make sure to encrypt the credentials first using the same encryption key.
+
+## Database Schema
+
+The `gmail_accounts` table structure:
+
+```sql
+CREATE TABLE gmail_accounts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email_address TEXT NOT NULL UNIQUE,
+  oauth_credentials TEXT NOT NULL,  -- Encrypted JSON
+  status TEXT NOT NULL DEFAULT 'active',  -- active, inactive, suspended
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_used_at DATETIME
+);
+```
+
+## Support
+
+For more help:
+- See main documentation: `../README.md`
+- Gmail setup guide: `../GMAIL_SETUP.md`
+- Troubleshooting: `../TROUBLESHOOTING.md`
+
+## Next Steps
+
+After adding accounts:
+
+1. **Verify accounts** - Run `./admin/list-accounts.sh`
+2. **Create a test campaign** - Use a small pool size (5-10 accounts)
+3. **Monitor logs** - Run `wrangler tail` to watch activity
+4. **Scale gradually** - Add more accounts as needed
