@@ -1,0 +1,99 @@
+name = "email-warmup-api"
+main = "src/api/index.ts"
+compatibility_date = "2024-01-01"
+
+# API Worker
+[env.production]
+name = "email-warmup-api"
+workers_dev = false
+route = { pattern = "api.yourdomain.com/*", zone_name = "yourdomain.com" }
+
+# D1 Database Binding
+[[d1_databases]]
+binding = "DB"
+database_name = "email-warmup-db"
+database_id = "aebf4b33-bdcc-4683-babc-41119605869f"
+
+# KV Namespace for API Keys
+[[kv_namespaces]]
+binding = "API_KEYS"
+id = "2939415650f34a54be67c0a0b166efab"
+
+# Queue Bindings
+[[queues.producers]]
+binding = "CAMPAIGN_QUEUE"
+queue = "campaign-queue"
+
+[[queues.producers]]
+binding = "ENGAGEMENT_QUEUE"
+queue = "engagement-queue"
+
+# Durable Object Binding
+[[durable_objects.bindings]]
+name = "POOL_COORDINATOR"
+class_name = "PoolCoordinator"
+script_name = "email-warmup-api"
+
+# Durable Object Migration
+# [[migrations]]
+# tag = "v1"
+# new_classes = ["PoolCoordinator"]
+
+# Scheduler Worker
+[env.scheduler]
+name = "email-warmup-scheduler"
+main = "src/scheduler/index.ts"
+compatibility_date = "2024-01-01"
+
+[[env.scheduler.d1_databases]]
+binding = "DB"
+database_name = "email-warmup-db"
+database_id = "aebf4b33-bdcc-4683-babc-41119605869f"
+
+[[env.scheduler.queues.producers]]
+binding = "CAMPAIGN_QUEUE"
+queue = "campaign-queue"
+
+[env.scheduler.triggers]
+crons = ["*/15 * * * *"]
+
+# Campaign Consumer Worker
+[env.consumer]
+name = "email-warmup-consumer"
+main = "src/consumer/index.ts"
+compatibility_date = "2024-01-01"
+
+[[env.consumer.d1_databases]]
+binding = "DB"
+database_name = "email-warmup-db"
+database_id = "aebf4b33-bdcc-4683-babc-41119605869f"
+
+[[env.consumer.queues.producers]]
+binding = "ENGAGEMENT_QUEUE"
+queue = "engagement-queue"
+
+[[env.consumer.queues.consumers]]
+queue = "campaign-queue"
+max_batch_size = 10
+max_batch_timeout = 30
+
+[[env.consumer.durable_objects.bindings]]
+name = "POOL_COORDINATOR"
+class_name = "PoolCoordinator"
+script_name = "email-warmup-api"
+
+# Engagement Worker
+[env.engagement]
+name = "email-warmup-engagement"
+main = "src/engagement/index.ts"
+compatibility_date = "2024-01-01"
+
+[[env.engagement.d1_databases]]
+binding = "DB"
+database_name = "email-warmup-db"
+database_id = "aebf4b33-bdcc-4683-babc-41119605869f"
+
+[[env.engagement.queues.consumers]]
+queue = "engagement-queue"
+max_batch_size = 5
+max_batch_timeout = 10
